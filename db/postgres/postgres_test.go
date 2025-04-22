@@ -193,6 +193,34 @@ func (pts *PostgresTestSuite) TestRemoveUser() {
 	}
 }
 
+func (pts *PostgresTestSuite) TestUpdateUser() {
+	updateTests := []struct {
+		name        string
+		currentUser string
+		newUser     string
+		wantErr     error
+	}{
+		{"happy path: update user2@user.com", "user2@user.com", "newuser@user.com", nil},
+		{"sad path: update non-existant user user999@user.com", "user999@user.com", "newuser@user.com", error(fmt.Errorf("no rows updated"))},
+	}
+
+	for _, test := range updateTests {
+		fmt.Println("running test:", test.name)
+		goterr := pts.pgs.UpdateUser(test.currentUser, test.newUser)
+
+		if goterr == nil && test.wantErr != nil {
+			pts.T().Errorf("got nil error \n, want error %s\n", test.wantErr.Error())
+		} else if test.wantErr == nil && goterr != nil {
+			pts.T().Errorf("got error %s\n, want nil error n", goterr.Error())
+		} else if goterr != nil && test.wantErr != nil {
+			if goterr.Error() != test.wantErr.Error() {
+				pts.T().Errorf("got %s\n, want error %s\n", goterr.Error(), test.wantErr.Error())
+			}
+		} // if both errors are nil, that is a successful test result
+
+	}
+}
+
 func (pts *PostgresTestSuite) TestLogin() {
 	loginTests := []struct {
 		name    string

@@ -17,6 +17,7 @@ type PostgresStore struct {
 RegisterNewUser(models.ServerUser) error
 FetchUser(string) (*models.ServerUser, error)
 RemoveUser(models.ServerUser) error
+UpdateUser(string string) error
 Login(models.ClientUser) error
 */
 func NewPostgresStore(db *sql.DB) *PostgresStore {
@@ -101,6 +102,44 @@ func (pgs *PostgresStore) RemoveUser(user models.ServerUser) error {
 			} else {
 				tx.Rollback()
 				return error(fmt.Errorf("multiple rows were marked for delete. rolling back transaction"))
+			}
+		}
+	}
+	return nil
+}
+
+func (pgs *PostgresStore) UpdateUser(currentEmail, newEmail string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	conn, err := pgs.db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+
+	tx, err := conn.BeginTx(ctx, &sql.TxOptions{
+		Isolation: sql.LevelDefault,
+		ReadOnly:  false,
+	})
+	if err != nil {
+		return err
+	}
+	result, err := tx.ExecContext(ctx, "update users set email=$2 where email=$1", currentEmail, newEmail)
+	if err == nil {
+		count, err := result.RowsAffected()
+		if err == nil {
+			if count == 0 {
+				tx.Rollback()
+				return error(fmt.Errorf("no rows updated"))
+			} else if count == 1 {
+				err := tx.Commit()
+				if err != nil {
+					return err
+				}
+				return nil
+			} else {
+				tx.Rollback()
+				return error(fmt.Errorf("multiple rows were marked for update. rolling back transaction"))
 			}
 		}
 	}
