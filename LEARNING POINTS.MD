@@ -25,13 +25,13 @@ sql stuff
   - creating custom functions see https://www.youtube.com/watch?v=GNTap3iVg3c
   - creating triggers https://www.youtube.com/watch?v=pO3T7QCVSUI
   - audit trail best practice
-    - create a separate table that tracks changes made and log
+    - create a separate table that log these fields
       - old value, new value
       - item id
       - timestamp
       - user who updated
     - create if statement to check if any fields were change before committing updated
-      - IF row(NEW.*) IS DISTINCT FROM row(OLD.*) THEN
+      - IF row(NEW.\*) IS DISTINCT FROM row(OLD.\*) THEN
           INSERT INTO user_audit (user_audit_id, old_user_email, new_user_email, operation, postgres_user_id)
           VALUES (nextval('custom-sequence'), OLD.email, NEW.email, TG_OP, current_user);
         END IF;
