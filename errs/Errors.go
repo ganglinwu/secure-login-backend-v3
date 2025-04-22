@@ -13,4 +13,5 @@ const (
 	PasswordIsBlank        = Errs("Cannot enter blank password")
 	LoginFailed            = Errs("Login failed")
 	LoginFailedBadPassword = Errs("Login failed")
+	EnvVarNotFound         = Errs("environment variable could not be found. check .env file?")
 )
