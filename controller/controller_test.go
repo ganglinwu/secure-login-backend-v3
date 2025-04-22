@@ -4,15 +4,18 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ganglinwu/secure-login-v3/errs"
 	"github.com/ganglinwu/secure-login-v3/models"
+	jsonWebTokes "github.com/ganglinwu/secure-login-v3/utils"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -54,6 +57,22 @@ func (m *mockStore) RemoveUser(clientUser models.ServerUser) error {
 	for i, user := range m.store {
 		if user.Email == clientUser.Email {
 			m.store = slices.Delete(m.store, i, i+1)
+			return nil
+		}
+	}
+	return errs.UserNotFound
+}
+
+func (m *mockStore) UpdateUser(email string, newEmail string) error {
+	newUser := models.ServerUser{}
+	for i, user := range m.store {
+		if user.Email == email {
+			newUser.Email = newEmail
+			newUser.HPassword = user.HPassword
+			newUser.Created_at = user.Created_at
+			newUser.Updated_at = time.Now()
+			m.store = slices.Delete(m.store, i, i+1)
+			m.store = append(m.store, newUser)
 			return nil
 		}
 	}
@@ -231,20 +250,76 @@ func TestRemoveUser(t *testing.T) {
 	}
 }
 
+func TestUpdate(t *testing.T) {
+	updateTests := []struct {
+		name             string
+		currentUserEmail string
+		updatedUser      models.ClientUser
+		store            mockStore
+		wantStatus       int
+	}{
+		{"HAPPY path: update email only", "newuser@gmail.com", models.ClientUser{Email: "user@gmail.com"}, mockStore{[]models.ServerUser{NewUser1}}, http.StatusOK},
+		{"HAPPY path: update both email and password", "newuser@gmail.com", models.ClientUser{Email: "user@gmail.com", Password: "plaintext"}, mockStore{[]models.ServerUser{NewUser1}}, http.StatusOK},
+		{"sad path: blank email", "newuser@gmail.com", models.ClientUser{}, mockStore{[]models.ServerUser{NewUser1}}, http.StatusBadRequest},
+		{"sad path: same email", "newuser@gmail.com", models.ClientUser{Email: "newuser@gmail.com"}, mockStore{[]models.ServerUser{NewUser1}}, http.StatusBadRequest},
+	}
+	for _, test := range updateTests {
+		fmt.Println("running test:", test.name)
+
+		jwtToken, err := jsonWebTokes.GenAuthToken(test.currentUserEmail)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		c := &http.Cookie{
+			Name:     "jwt",
+			Value:    jwtToken,
+			HttpOnly: true,
+			Expires:  time.Now().Add(5 * time.Minute),
+			Path:     "/",
+		}
+
+		clientData := url.Values{
+			"Email":    {test.updatedUser.Email},
+			"Password": {test.updatedUser.Password},
+		}
+		body := strings.NewReader(clientData.Encode())
+		req, _ := http.NewRequest(http.MethodPost, "/update-user", body)
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.AddCookie(c)
+
+		resRec := httptest.NewRecorder()
+
+		ms := test.store
+		s := NewLoginServer(&ms)
+
+		s.ServeHTTP(resRec, req)
+
+		gotStatus := resRec.Code
+		wantStatus := test.wantStatus
+
+		if gotStatus != wantStatus {
+			t.Errorf("got status code %d, want status code %d", gotStatus, wantStatus)
+			byte, _ := io.ReadAll(resRec.Result().Body)
+			fmt.Printf("%s \n", byte)
+		}
+	}
+}
+
 func TestLogin(t *testing.T) {
-	loginTests := []struct {
+	updateTests := []struct {
 		name       string
 		user       models.ClientUser
 		store      mockStore
 		wantStatus int
 	}{
-		{"empty email", models.ClientUser{Password: "hashed123"}, mockStore{[]models.ServerUser{NewUser1}}, http.StatusBadRequest},
-		{"empty password", models.ClientUser{Email: "newuser@gmail.com"}, mockStore{[]models.ServerUser{NewUser1}}, http.StatusBadRequest},
-		{"login user password", models.ClientUser{Email: "newuser@gmail.com", Password: "hashed123"}, mockStore{[]models.ServerUser{NewUser1}}, http.StatusOK},
-		{"login user bad password", models.ClientUser{Email: "newuser@gmail.com", Password: "hashed321"}, mockStore{[]models.ServerUser{NewUser1}}, http.StatusBadRequest},
-		{"login user does not exist", models.ClientUser{Email: "olduser@gmail.com", Password: "hashed321"}, mockStore{[]models.ServerUser{NewUser1}}, http.StatusBadRequest},
+		{"sad path: empty email", models.ClientUser{Password: "hashed123"}, mockStore{[]models.ServerUser{NewUser1}}, http.StatusBadRequest},
+		{"sad path: empty password", models.ClientUser{Email: "newuser@gmail.com"}, mockStore{[]models.ServerUser{NewUser1}}, http.StatusBadRequest},
+		{"HAPPY path: login user password", models.ClientUser{Email: "newuser@gmail.com", Password: "hashed123"}, mockStore{[]models.ServerUser{NewUser1}}, http.StatusOK},
+		{"sad path: login user bad password", models.ClientUser{Email: "newuser@gmail.com", Password: "hashed321"}, mockStore{[]models.ServerUser{NewUser1}}, http.StatusBadRequest},
+		{"sad path: login user does not exist", models.ClientUser{Email: "olduser@gmail.com", Password: "hashed321"}, mockStore{[]models.ServerUser{NewUser1}}, http.StatusBadRequest},
 	}
-	for _, test := range loginTests {
+	for _, test := range updateTests {
 		fmt.Println("running test:", test.name)
 		clientData := url.Values{
 			"Email":    {test.user.Email},
@@ -266,6 +341,19 @@ func TestLogin(t *testing.T) {
 
 		if gotStatus != wantStatus {
 			t.Errorf("got status code %d, want status code %d", gotStatus, wantStatus)
+			// byte, _ := io.ReadAll(resRec.Result().Body)
+			// fmt.Printf("%s \n", byte)
+		} else if gotStatus == 200 && wantStatus == 200 {
+			response := resRec.Result()
+			for _, cookie := range response.Cookies() {
+				issuer, err := jsonWebTokes.CheckAuthToken(cookie.Value)
+				if err == nil {
+					if issuer != test.user.Email {
+						t.Errorf("got cookie issuer %q, want %q", issuer, test.user.Email)
+					}
+				}
+			}
 		}
+
 	}
 }

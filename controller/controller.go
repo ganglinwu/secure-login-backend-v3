@@ -4,16 +4,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/ganglinwu/secure-login-v3/errs"
 	"github.com/ganglinwu/secure-login-v3/models"
+	jsonWebTokes "github.com/ganglinwu/secure-login-v3/utils"
 )
 
 type UserStore interface {
 	RegisterNewUser(models.ServerUser) error
 	FetchUser(string) (*models.ServerUser, error)
+	UpdateUser(string, string) error
 	RemoveUser(models.ServerUser) error
 	Login(models.ClientUser) error
 }
@@ -33,6 +36,7 @@ func NewLoginServer(store UserStore) *LoginServer {
 	r.HandleFunc("POST /", server.HandleRegistration)
 	r.HandleFunc("POST /users", server.HandleFetchUser)
 	r.HandleFunc("POST /delete-user", server.HandleDeleteUser)
+	r.HandleFunc("POST /update-user", server.HandleUpdateUser)
 	r.HandleFunc("POST /login", server.HandleLogin)
 
 	server.Handler = r
@@ -108,14 +112,14 @@ func (s *LoginServer) HandleFetchUser(w http.ResponseWriter, r *http.Request) {
 	email := r.FormValue("Email")
 	if email == "" {
 		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, errs.EmailIsBlank.Error())
+		fmt.Fprint(w, errs.EmailIsBlank.Error())
 		return
 	}
 
 	user, err := s.store.FetchUser(email)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, err.Error())
+		fmt.Fprint(w, err.Error())
 		return
 	}
 
@@ -154,7 +158,7 @@ func (s *LoginServer) HandleDeleteUser(w http.ResponseWriter, r *http.Request) {
 	existingUser, err := s.store.FetchUser(email)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, errs.UserNotFound.Error())
+		fmt.Fprint(w, errs.UserNotFound.Error())
 		return
 	}
 
@@ -180,6 +184,60 @@ func (s *LoginServer) HandleDeleteUser(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprint(w, err.Error())
 		return
+	}
+}
+
+func (s *LoginServer) HandleUpdateUser(w http.ResponseWriter, r *http.Request) {
+	err := r.ParseForm()
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, err.Error())
+		return
+	}
+
+	// check new email blank
+	newUserEmail := r.FormValue("Email")
+	if newUserEmail == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, errs.EmailIsBlank.Error())
+		return
+	}
+
+	/*
+	*
+	* End of Form Parsing
+	* Below we get user name from JWT token in cookie
+	*
+	 */
+	jwtCookie, err := r.Cookie("jwt")
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprintf(w, "not authorized, please log in. err: %s", err.Error())
+		return
+	}
+
+	currentUserEmail, err := jsonWebTokes.CheckAuthToken(jwtCookie.Value)
+
+	// check new with current email
+	if newUserEmail == currentUserEmail {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, "email to be updated is the same as current email, abort update")
+		return
+	}
+
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprintf(w, "unauthorized 2, please log in again")
+		return
+	} else {
+		err = s.store.UpdateUser(currentUserEmail, newUserEmail)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprintf(w, "bad request: %s\n", err.Error())
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "update success")
 	}
 }
 
@@ -217,6 +275,19 @@ func (s *LoginServer) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, "failed to login")
 		return
 	} else {
+		token, err := jsonWebTokes.GenAuthToken(email)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(w, "failed to generate jwt token: %s", err.Error())
+			return
+		}
+		cookie := http.Cookie{
+			Name:     "jwt",
+			Value:    token,
+			Expires:  time.Now().Add(5 * time.Minute),
+			HttpOnly: true,
+		}
+		http.SetCookie(w, &cookie)
 		w.WriteHeader(http.StatusOK)
 		return
 	}
