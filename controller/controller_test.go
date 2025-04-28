@@ -199,9 +199,27 @@ func TestFetchUser(t *testing.T) {
 		want           models.ServerUser
 		wantStatusCode int
 	}{
-		{"empty email", "", mockStore{[]models.ServerUser{NewUser1}}, models.ServerUser{}, http.StatusBadRequest},
-		{"empty store", "newuser@gmail.com", mockStore{[]models.ServerUser{}}, models.ServerUser{}, http.StatusBadRequest},
-		{"fetch user from store", "newuser@gmail.com", mockStore{[]models.ServerUser{NewUser1}}, NewUser1, http.StatusOK},
+		{
+			name:           "empty email",
+			email:          "",
+			store:          mockStore{[]models.ServerUser{NewUser1}},
+			want:           models.ServerUser{},
+			wantStatusCode: http.StatusBadRequest,
+		},
+		{
+			name:           "empty store",
+			email:          "newuser@gmail.com",
+			store:          mockStore{[]models.ServerUser{}},
+			want:           models.ServerUser{},
+			wantStatusCode: http.StatusBadRequest,
+		},
+		{
+			name:           "fetch user from store",
+			email:          "newuser@gmail.com",
+			store:          mockStore{[]models.ServerUser{NewUser1}},
+			want:           NewUser1,
+			wantStatusCode: http.StatusOK,
+		},
 	}
 	for _, test := range fetchTests {
 		fmt.Println("running test:", test.name)
@@ -251,9 +269,27 @@ func TestRemoveUser(t *testing.T) {
 		wantErr    error
 		wantStatus int
 	}{
-		{"empty email", models.ClientUser{Password: "hashed123"}, mockStore{[]models.ServerUser{NewUser1}}, errs.EmailIsBlank, http.StatusBadRequest},
-		{"empty password", models.ClientUser{Email: "newuser@gmail.com", Password: ""}, mockStore{[]models.ServerUser{NewUser1}}, errs.PasswordIsBlank, http.StatusBadRequest},
-		{"delete user from store", models.ClientUser{Email: "newuser@gmail.com", Password: "hashed123"}, mockStore{[]models.ServerUser{NewUser1}}, nil, http.StatusOK},
+		{
+			name:       "empty email",
+			user:       models.ClientUser{Password: "hashed123"},
+			store:      mockStore{[]models.ServerUser{NewUser1}},
+			wantErr:    errs.EmailIsBlank,
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "empty password",
+			user:       models.ClientUser{Email: "newuser@gmail.com", Password: ""},
+			store:      mockStore{[]models.ServerUser{NewUser1}},
+			wantErr:    errs.PasswordIsBlank,
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "delete user from store",
+			user:       models.ClientUser{Email: "newuser@gmail.com", Password: "hashed123"},
+			store:      mockStore{[]models.ServerUser{NewUser1}},
+			wantErr:    nil,
+			wantStatus: http.StatusOK,
+		},
 	}
 
 	for _, test := range deleteTests {
@@ -366,11 +402,36 @@ func TestLogin(t *testing.T) {
 		store      mockStore
 		wantStatus int
 	}{
-		{"sad path: empty email", models.ClientUser{Password: "hashed123"}, mockStore{[]models.ServerUser{NewUser1}}, http.StatusBadRequest},
-		{"sad path: empty password", models.ClientUser{Email: "newuser@gmail.com"}, mockStore{[]models.ServerUser{NewUser1}}, http.StatusBadRequest},
-		{"HAPPY path: login user password", models.ClientUser{Email: "newuser@gmail.com", Password: "hashed123"}, mockStore{[]models.ServerUser{NewUser1}}, http.StatusOK},
-		{"sad path: login user bad password", models.ClientUser{Email: "newuser@gmail.com", Password: "hashed321"}, mockStore{[]models.ServerUser{NewUser1}}, http.StatusBadRequest},
-		{"sad path: login user does not exist", models.ClientUser{Email: "olduser@gmail.com", Password: "hashed321"}, mockStore{[]models.ServerUser{NewUser1}}, http.StatusBadRequest},
+		{
+			name:       "sad path: empty email",
+			user:       models.ClientUser{Password: "hashed123"},
+			store:      mockStore{[]models.ServerUser{NewUser1}},
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "sad path: empty password",
+			user:       models.ClientUser{Email: "newuser@gmail.com"},
+			store:      mockStore{[]models.ServerUser{NewUser1}},
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "HAPPY path: login user password",
+			user:       models.ClientUser{Email: "newuser@gmail.com", Password: "hashed123"},
+			store:      mockStore{[]models.ServerUser{NewUser1}},
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "sad path: login user bad password",
+			user:       models.ClientUser{Email: "newuser@gmail.com", Password: "hashed321"},
+			store:      mockStore{[]models.ServerUser{NewUser1}},
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "sad path: login user does not exist",
+			user:       models.ClientUser{Email: "olduser@gmail.com", Password: "hashed321"},
+			store:      mockStore{[]models.ServerUser{NewUser1}},
+			wantStatus: http.StatusBadRequest,
+		},
 	}
 	for _, test := range updateTests {
 		fmt.Println("running test:", test.name)
