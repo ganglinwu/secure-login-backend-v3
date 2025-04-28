@@ -97,10 +97,16 @@ func (m *mockStore) Login(user models.ClientUser) error {
 
 // --------------- END mockStore -----------------------
 
-var NewUser1 = models.ServerUser{
-	Email:     "newuser@gmail.com",
-	HPassword: "$2a$10$87jJGy8zixinAPj5AsZhcuUD0jEpDVS.Y3y1ctUUZU/Yc4mOxKAT6",
-}
+var (
+	NewUser1 = models.ServerUser{
+		Email:     "newuser@gmail.com",
+		HPassword: "$2a$10$87jJGy8zixinAPj5AsZhcuUD0jEpDVS.Y3y1ctUUZU/Yc4mOxKAT6",
+	}
+	NewUser2 = models.ServerUser{
+		Email:     "newuser2@gmail.com",
+		HPassword: "$2a$10$kQ5icFIuyp/1vfocGKHh2eBn8hNVlrJtY40BWoHI99XnuY6t3gFXu",
+	}
+)
 
 func TestRegisterNewUser(t *testing.T) {
 	registerTests := []struct {
@@ -109,9 +115,30 @@ func TestRegisterNewUser(t *testing.T) {
 		want           models.ServerUser
 		wantStatusCode int
 	}{
-		{"register blank email", models.ClientUser{Email: "", Password: "hashed123"}, models.ServerUser{}, http.StatusBadRequest},
-		{"register blank password", models.ClientUser{Email: "newuser@gmail.com", Password: ""}, models.ServerUser{}, http.StatusBadRequest},
-		{"register NewUser1", models.ClientUser{Email: "newuser@gmail.com", Password: "hashed123"}, NewUser1, http.StatusCreated},
+		{
+			testname:       "register blank email",
+			user:           models.ClientUser{Email: "", Password: "hashed123"},
+			want:           models.ServerUser{},
+			wantStatusCode: http.StatusBadRequest,
+		},
+		{
+			testname:       "register blank password",
+			user:           models.ClientUser{Email: "newuser@gmail.com", Password: ""},
+			want:           models.ServerUser{},
+			wantStatusCode: http.StatusBadRequest,
+		},
+		{
+			testname:       "register NewUser1",
+			user:           models.ClientUser{Email: "newuser@gmail.com", Password: "hashed123"},
+			want:           NewUser1,
+			wantStatusCode: http.StatusCreated,
+		},
+		{
+			testname:       "register existing user NewUser2, expect bad request",
+			user:           models.ClientUser{Email: "newuser2@gmail.com", Password: "NewUser2"},
+			want:           models.ServerUser{},
+			wantStatusCode: http.StatusBadRequest,
+		},
 	}
 
 	for _, test := range registerTests {
@@ -126,7 +153,7 @@ func TestRegisterNewUser(t *testing.T) {
 
 		resRec := httptest.NewRecorder()
 
-		ms := mockStore{}
+		ms := mockStore{[]models.ServerUser{NewUser2}}
 		s := NewLoginServer(&ms)
 
 		s.ServeHTTP(resRec, req)
@@ -135,6 +162,8 @@ func TestRegisterNewUser(t *testing.T) {
 
 		got := models.ServerUser{}
 
+		// check if user successfully registered and persisted in store
+		// if store is empty it could have been unsuccessful registration
 		if len(ms.store) == 0 {
 			// if nothing found
 			// then do nothing and proceed to compare status code
@@ -258,10 +287,34 @@ func TestUpdate(t *testing.T) {
 		store            mockStore
 		wantStatus       int
 	}{
-		{"HAPPY path: update email only", "newuser@gmail.com", models.ClientUser{Email: "user@gmail.com"}, mockStore{[]models.ServerUser{NewUser1}}, http.StatusOK},
-		{"HAPPY path: update both email and password", "newuser@gmail.com", models.ClientUser{Email: "user@gmail.com", Password: "plaintext"}, mockStore{[]models.ServerUser{NewUser1}}, http.StatusOK},
-		{"sad path: blank email", "newuser@gmail.com", models.ClientUser{}, mockStore{[]models.ServerUser{NewUser1}}, http.StatusBadRequest},
-		{"sad path: same email", "newuser@gmail.com", models.ClientUser{Email: "newuser@gmail.com"}, mockStore{[]models.ServerUser{NewUser1}}, http.StatusBadRequest},
+		{
+			name:             "HAPPY path: update email only",
+			currentUserEmail: "newuser@gmail.com",
+			updatedUser:      models.ClientUser{Email: "user@gmail.com"},
+			store:            mockStore{[]models.ServerUser{NewUser1}},
+			wantStatus:       http.StatusOK,
+		},
+		{
+			name:             "HAPPY path: update both email and password",
+			currentUserEmail: "newuser@gmail.com",
+			updatedUser:      models.ClientUser{Email: "user@gmail.com", Password: "plaintext"},
+			store:            mockStore{[]models.ServerUser{NewUser1}},
+			wantStatus:       http.StatusOK,
+		},
+		{
+			name:             "sad path: blank email",
+			currentUserEmail: "newuser@gmail.com",
+			updatedUser:      models.ClientUser{},
+			store:            mockStore{[]models.ServerUser{NewUser1}},
+			wantStatus:       http.StatusBadRequest,
+		},
+		{
+			name:             "sad path: same email",
+			currentUserEmail: "newuser@gmail.com",
+			updatedUser:      models.ClientUser{Email: "newuser@gmail.com"},
+			store:            mockStore{[]models.ServerUser{NewUser1}},
+			wantStatus:       http.StatusBadRequest,
+		},
 	}
 	for _, test := range updateTests {
 		fmt.Println("running test:", test.name)
