@@ -26,3 +26,6 @@ go.work.sum
 
 # pgdata (docker volume mount for postgres containers)
 **/pgdata
+
+#pem key to ssh into AWS EC2
+*.pem
