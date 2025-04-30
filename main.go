@@ -14,6 +14,7 @@ import (
 	"github.com/ganglinwu/secure-login-v3/controller"
 	pg "github.com/ganglinwu/secure-login-v3/db/postgres"
 	"github.com/joho/godotenv"
+	_ "github.com/lib/pq"
 )
 
 func init() {
@@ -23,15 +24,15 @@ func init() {
 
 func main() {
 	// connect to DB
-	connString := fmt.Sprintf("user=%s password=%s host=%s dbname=%s sslmode=require", os.Getenv("USERNAME"), os.Getenv("PASSWORD"), os.Getenv("HOSTNAME"), os.Getenv("DATABASE_NAME"))
+	connString := fmt.Sprintf("postgres://%s:%s@%s/%s", os.Getenv("USERNAME"), os.Getenv("PASSWORD"), os.Getenv("HOSTNAME"), os.Getenv("DATABASE_NAME"))
 	conn, err := sql.Open("postgres", connString)
 	if err != nil {
-		log.Fatal("failed to connect to postgres")
+		log.Fatal("failed to initiate connection to postgres", err.Error())
 	}
 
 	err = conn.Ping()
 	if err != nil {
-		log.Fatal("failed to connect to postgres")
+		log.Fatal("failed to connect to postgres", err.Error())
 	}
 	log.Println("connected to postgres database")
 
