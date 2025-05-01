@@ -88,21 +88,6 @@ func (s *LoginServer) HandleRegistration(w http.ResponseWriter, r *http.Request)
 		fmt.Fprint(w, err.Error())
 		return
 	}
-	// check if user email is already registered
-	// first we search store for user
-	a, err := s.store.FetchUser(email)
-	// if error, something wrong with searching
-	if err != nil {
-		if err == errs.UserNotFound {
-			// do nothing and continue
-		} else {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-	}
-	// if user found, then cannot register with this email
-	if a != nil {
-		http.Error(w, errs.UserAlreadyExists.Error(), http.StatusBadRequest)
-	}
 
 	// calling store method RegisterNewUser
 	err = s.store.RegisterNewUser(models.ServerUser{Email: email, HPassword: string(byteHashedPW)})
