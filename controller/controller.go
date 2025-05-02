@@ -33,6 +33,7 @@ func NewLoginServer(store UserStore) *LoginServer {
 
 	r := http.NewServeMux()
 
+	r.HandleFunc("GET /", server.HandleGetHomePage)
 	r.HandleFunc("POST /", server.HandleRegistration)
 	r.HandleFunc("POST /users", server.HandleFetchUser)
 	r.HandleFunc("POST /delete-user", server.HandleDeleteUser)
@@ -49,6 +50,11 @@ func NewLoginServer(store UserStore) *LoginServer {
 *  HANDLER FUNCTIONS (START)
 *
  */
+
+func (s *LoginServer) HandleGetHomePage(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, "../index.html")
+	w.WriteHeader(http.StatusOK)
+}
 
 func (s *LoginServer) HandleRegistration(w http.ResponseWriter, r *http.Request) {
 	// CHECK: form exists and usable on our end
